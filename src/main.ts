@@ -191,16 +191,16 @@ function renderObstacles() {
 
 function calculateFitness(blob: Blob): number {
   const distanceToFinishLine = finishLineX - blob.x;
-  let fitness = Math.max(0, 1000 - distanceToFinishLine); // Higher is better
+  let fitness = Math.max(0, width - distanceToFinishLine); // Higher is better
 
   // Penalty for steering longer than 110 degrees in one direction
-  fitness -= blob.amountOfOversteeringActions * 5;
+  fitness -= blob.amountOfOversteeringActions * 0.01;
 
   // Penalty for obstacles hit (not implemented in current logic, placeholder)
   fitness -= blob.amountOfObstaclesHit * 20;
 
   // Bonus for distance traveled
-  fitness += blob.amountOfDistanceTraveled * 0.1;
+  fitness += blob.amountOfDistanceTraveled * 0.01;
 
   return fitness;
 }
