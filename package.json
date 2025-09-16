@@ -1,0 +1,29 @@
+{
+  "name": "test-2s-ml",
+  "version": "1.0.0",
+  "description": "",
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "index.ts",
+  "scripts": {
+    "build": "tsc",
+    "start": "ts-node src/main.ts",
+    "run": "node dist/main.js",
+    "dev": "ts-node src/main.ts",
+    "build:watch": "tsc --watch",
+    "clean": "rm -rf dist",
+    "prebuild": "npm run clean",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "@kmamal/sdl": "^0.11.13",
+    "@napi-rs/canvas": "^0.1.80",
+    "@tensorflow/tfjs-node": "^4.22.0",
+    "@tensorflow/tfjs-node-gpu": "^4.22.0"
+  },
+  "devDependencies": {
+    "ts-node": "^10.9.2",
+    "typescript": "^5.0.0"
+  }
+}
