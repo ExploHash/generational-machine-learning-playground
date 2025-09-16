@@ -19,6 +19,7 @@ type Blob = {
   size: number;
   color: string;
   fitness: number;
+  gas: number;
   uninteruptedSteeringDegree: number;
   lastTurnDirection: 'left' | 'right' | 'straight';
   amountOfActions: number;
@@ -40,21 +41,16 @@ ctx.fillRect(0, 0, width, height)
 
 
 const listOfColors = [
-  'red', 'green', 'blue', 'yellow', 'purple', 'orange', 'pink', 'cyan', 'magenta', 'lime',
-  'teal', 'lavender', 'brown', 'beige', 'maroon', 'navy', 'olive', 'coral', 'turquoise', 'silver',
-  'gold', 'salmon', 'plum', 'orchid', 'crimson', 'indigo', 'ivory', 'khaki', 'mint', 'peach',
-  'apricot', 'aquamarine', 'azure', 'bronze', 'charcoal', 'chocolate', 'copper', 'fuchsia', 'jade', 'lemon',
+  'red', 'green', 'blue', 'yellow', 'purple', 'orange'
 ]
-const populationSize = listOfColors.length; // 10
+const populationSize = 25;
 
 let visibleBlobs: Blob[] = [];
 
 const obstacles: Obsctacle[] = [
   { x: 200, y: 100, width: 50, height: 200 },
-  { x: 400, y: 200, width: 50, height: 150 },
-  { x: 600, y: 50, width: 50, height: 180 },
-  { x: 300, y: 0, width: 30, height: 120 },
-  { x: 500, y: 280, width: 40, height: 120 }
+  { x: 400, y: 200, width: 50, height: 200 },
+  { x: 600, y: 0, width: 50, height: 200 },
 ];
 
 
@@ -62,7 +58,7 @@ const finishLineX = width - 50;
 
 function createModel() {
   const model = tf.sequential();
-  const inputs = 7; // x, y, orientation, distance to finish line
+  const inputs = 8; // x, y, orientation, distance to finish line
   model.add(tf.layers.dense({inputShape: [inputs], units: 8, activation: 'relu'}));
   model.add(tf.layers.dense({units: 3, activation: 'tanh'})); // left, right
   return model;
@@ -76,6 +72,7 @@ function initializeBlob(model: tf.LayersModel, color: string): Blob {
     currentlyHittingObstacle: false,
     orientation: 90, // Facing right
     uninteruptedSteeringDegree: 0,
+    gas: 0,
     lastTurnDirection: 'straight',
     amountOfActions: 0,
     amountOfOversteeringActions: 0,
@@ -95,6 +92,7 @@ function resetBlob(blob: Blob) {
   blob.orientation = 90;
   blob.fitness = 0;
   blob.uninteruptedSteeringDegree = 0;
+  blob.gas = 0;
   blob.lastTurnDirection = 'straight';
   blob.amountOfActions = 0;
   blob.amountOfOversteeringActions = 0;
@@ -152,22 +150,15 @@ function evolveBlobs(blobs: Blob[]): Blob[] {
 
   // Reset positions and orientations of elites for the new generation
   for (const elite of newPop) {
-    elite.x = elite.size * 2;
-    elite.y = height / 2 - elite.size / 2;
-    elite.orientation = 90;
-    elite.fitness = 0;
+    resetBlob(elite);
   }
-
-  // Remaining colors
-  const usedColors = new Set(newPop.map(blob => blob.color));
-  const remainingColors = listOfColors.filter(color => !usedColors.has(color));
 
   // Fill the rest of the population with mutated offspring
   while (newPop.length < populationSize) {
     const parent = elites[Math.floor(Math.random() * elites.length)];
     const childModel = cloneModel(parent.model);
     mutateModel(childModel);
-    newPop.push(initializeBlob(childModel, remainingColors.pop() || 'white'));
+    newPop.push(initializeBlob(childModel, listOfColors[newPop.length % listOfColors.length]));
   }
 
   return newPop;
@@ -194,14 +185,15 @@ function calculateFitness(blob: Blob): number {
   let fitness = Math.max(0, width - distanceToFinishLine); // Higher is better
 
   // Penalty for steering longer than 110 degrees in one direction
-  fitness -= blob.amountOfOversteeringActions * 0.01;
+  fitness -= blob.amountOfOversteeringActions * 0.2;
 
   // Penalty for obstacles hit (not implemented in current logic, placeholder)
-  fitness -= blob.amountOfObstaclesHit * 20;
+  fitness -= blob.amountOfObstaclesHit * 0.5;
 
   // Bonus for distance traveled
-  fitness += blob.amountOfDistanceTraveled * 0.01;
+  // fitness += blob.amountOfDistanceTraveled * 0.01;
 
+  console.log(`Blob fitness: ${fitness.toFixed(2)})}`);
   return fitness;
 }
 
@@ -290,13 +282,16 @@ function calculateBlobAntennae(blob: Blob): { leftCorner: number; rightCorner: n
 
 async function simulate(generation: number = 1) {
   const framesPerSecond = 60;
-  const maxSimulationTime = 15; // seconds
+  const maxSimulationTime = 120; // seconds
   const maxFrames = framesPerSecond * maxSimulationTime;
   let frameCount = 0;
 
   while (frameCount < maxFrames) {
     // Render all blobs
-    render(generation, Math.floor(frameCount / framesPerSecond))
+    // Render every 8 frames to improve performance
+    if (frameCount % 8 === 0){
+      render(generation, Math.floor(frameCount / framesPerSecond));
+    }
 
     // Update each blob
     updateBlobs()
@@ -308,8 +303,8 @@ async function simulate(generation: number = 1) {
 
 function generateInitialBlobs(): Blob[] {
   const blobs = [];
-  for (let i = 0; i < listOfColors.length; i++) {
-    const color = listOfColors[i];
+  for (let i = 0; i < populationSize; i++) {
+    const color = listOfColors[i % listOfColors.length];
     const model = createModel();
     setModelRandomWeights(model);
     const blob = initializeBlob(model, color);
@@ -329,18 +324,19 @@ function updateBlobs() {
     // Prepare input tensor: [x, y, orientation, distance to finish line]
     const { leftCorner, rightCorner, center } = calculateBlobAntennae(blob);
     const distanceToFinishLine = finishLineX - blob.x;
-    const inputTensor = tf.tensor2d([[blob.x / width, blob.y / height, blob.orientation / 360, distanceToFinishLine / width, leftCorner / 50, rightCorner / 50, center / 50]]);
+    const inputTensor = tf.tensor2d([[blob.x / width, blob.y / height, blob.orientation / 360, distanceToFinishLine / width, leftCorner / 50, rightCorner / 50, center / 50, blob.gas]]); // Normalize inputs
     const outputTensor = blob.model.predict(inputTensor) as tf.Tensor;
 
     const output = outputTensor.arraySync() as number[][];
     const [turnLeft, turnRight, gas] = output[0];
+    blob.gas = Math.max(0, gas); // Ensure gas is non-negative
 
     // Update orientation based on model output
     if (turnLeft > 0.1) {
       blob.orientation -= 5;
       if (blob.lastTurnDirection === 'left') {
         blob.uninteruptedSteeringDegree += 5;
-        if (blob.uninteruptedSteeringDegree > 110) {
+        if (blob.uninteruptedSteeringDegree > 60) {
           blob.amountOfOversteeringActions++;
           blob.uninteruptedSteeringDegree = 0; // Reset after counting
         }
@@ -354,7 +350,7 @@ function updateBlobs() {
       blob.orientation += 5; // Turn right
       if (blob.lastTurnDirection === 'right') {
         blob.uninteruptedSteeringDegree += 5;
-        if (blob.uninteruptedSteeringDegree > 110) {
+        if (blob.uninteruptedSteeringDegree > 90) {
           blob.amountOfOversteeringActions++;
           blob.uninteruptedSteeringDegree = 0; // Reset after counting
         }
@@ -396,11 +392,16 @@ function updateBlobs() {
         blob.currentlyHittingObstacle = false;
         blob.x = newX;
         blob.y = newY;
-      } else if (!blob.currentlyHittingObstacle) {
+      // } else if (!blob.currentlyHittingObstacle) {
+      } else {
         // Penalty for hitting an obstacle
         blob.currentlyHittingObstacle = true;
         blob.amountOfObstaclesHit = (blob.amountOfObstaclesHit || 0) + 1;
       }
+    } else {
+      blob.currentlyHittingObstacle = true;
+      // Penalty for hitting wall
+      blob.amountOfObstaclesHit = (blob.amountOfObstaclesHit || 0) + 1;
     }
 
     // Clean up tensors
